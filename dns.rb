@@ -59,20 +59,41 @@ module DNS
     def has_authorative_nameserver_of(domain)
       check! 'NS', domain
     end
-    
+
+    def all_ns_servers_are_included_in(servers)
+      check! 'NS', servers
+    end
+
+    def all_mail_servers_are_included_in(servers)
+      check! 'MX', servers
+    end
+
   private
   
     def check!(query, against, args = {})
-      if ['A', 'CNAME', 'NS'].include?(query)
+      if against.is_a?(Array)
+        pattern = /#{@domain}\.\s+\d+\s+IN\s+#{query}\s+[\d\s]*([a-z\d\-\.]+)/
+      elsif ['A', 'CNAME', 'NS'].include?(query)
         pattern = /#{@domain}\.\s+\d+\s+IN\s+#{query}\s+#{against}/
       elsif query == 'MX'
         pattern = /#{@domain}\.\s+\d+\s+IN\s+MX\s+#{args[:priority]}\s+#{against}/
       else
         raise "Unsupported query (#{query.inspect}): only A, CNAME and MX."
-      end      
-      send(result!(query) =~ pattern ? :pass! : :fail!, query, against, args)
+      end
+
+      if against.is_a?(Array)
+        result!(query).split("\n").each do |line|
+          if line =~ pattern
+            server = $1[0,$1.length-1]
+            return send(:fail!) unless against.include? server
+          end
+        end
+        return send(:pass!)
+      else
+        send(result!(query) =~ pattern ? :pass! : :fail!, query, against, args)
+      end
     end
-    
+
     def result!(query)
       @last_dig_command = if @server
         "dig @#{@server} #{@domain} #{query}"
